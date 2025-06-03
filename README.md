@@ -1,7 +1,7 @@
 # Price Comparison
 
 ## Deskripsi Proyek
-Price Comparison adalah sebuah aplikasi yang memungkinkan pengguna untuk membandingkan harga suatu produk di berbagai platform e-commerce seperti Tokopedia dan Bukalapak. Aplikasi ini mendukung input baik dalam bentuk gambar maupun teks, melakukan klasifikasi produk, mencari produk serupa di e-commerce, dan memberikan hasil berupa produk dengan harga termurah beserta link pembelian.
+Price Comparison adalah sebuah aplikasi yang memungkinkan pengguna untuk membandingkan harga suatu produk di berbagai platform e-commerce seperti Tokopedia. Aplikasi ini mendukung input baik dalam bentuk gambar maupun teks, melakukan klasifikasi produk, mencari produk serupa di e-commerce, dan memberikan hasil berupa produk dengan harga termurah beserta link pembelian.
 
 ## Fitur Utama
 - **Klasifikasi Produk**: Mendukung input dalam bentuk gambar (image classification) maupun teks.
