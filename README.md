@@ -26,7 +26,7 @@ cd compare_price_online_shop
 
 ### Menjalankan Aplikasi
 ```bash
-python final.py
+streamlit run final.py
 ```
 
 ## Teknologi yang Digunakan
