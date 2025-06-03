@@ -24,7 +24,8 @@ products = driver.find_elements(By.CLASS_NAME, 'css-5wh65g')
 for product in products[:10]:
     try:
         # Nama produk
-        name = product.find_element(By.XPATH, ".//span[contains(text(), '')]").text
+        # name = product.find_element(By.XPATH, ".//span[contains(text(), '')]").text
+        name = product.find_element(By.XPATH, ".//span[contains(@class, '_0T8-iGxMpV6NEsYEhwkqEg==')]").text
     except:
         name = 'Nama tidak ditemukan'
 

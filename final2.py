@@ -8,9 +8,12 @@ from selenium.webdriver.edge.service import Service
 from selenium.webdriver.edge.options import Options
 from webdriver_manager.microsoft import EdgeChromiumDriverManager
 from selenium.webdriver.common.by import By
+import re
 import time
+import pandas as pd
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 
-# Load model
 model = load_model("image_classify.h5", compile=False)
 
 data_cat = [
@@ -33,8 +36,12 @@ def parse_price(price_str):
 
 def parse_sold(sold_str):
     try:
-        num = ''.join(filter(str.isdigit, sold_str))
-        return int(num) if num else 0
+        # Contoh "123 terjual" ambil angka 123
+        number = re.findall(r'\d+', sold_str.replace('.', ''))
+        if number:
+            return int(number[0])
+        else:
+            return 0
     except:
         return 0
 
@@ -44,20 +51,20 @@ def scrape_tokopedia_with_sales(product_name):
     options = Options()
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
-    # options.add_argument("--headless")
 
     driver = webdriver.Edge(service=Service(EdgeChromiumDriverManager().install()), options=options)
     product_info = []
 
     try:
         driver.get(search_url)
-        time.sleep(5)
+        time.sleep(5) 
+        
 
         products = driver.find_elements(By.CLASS_NAME, 'css-5wh65g')
-
+        
         for product in products[:10]:
             try:
-                name = product.find_element(By.XPATH, ".//span[contains(text(), '')]").text
+                name = product.find_element(By.XPATH, ".//span[contains(@class, '_0T8-iGxMpV6NEsYEhwkqEg==')]").text               
             except:
                 name = 'Nama tidak ditemukan'
 
@@ -92,68 +99,168 @@ def scrape_tokopedia_with_sales(product_name):
 
     return product_info
 
-st.title("Klasifikasi Gambar + Cari Harga Termurah & Terjual Tokopedia")
 
-with st.form("search_form"):
-    keyword_input = st.text_input("Masukkan keyword pencarian Tokopedia (opsional)")
-    uploaded_file = st.file_uploader('Upload gambar', type=['jpg', 'jpeg', 'png'])
-    submitted = st.form_submit_button("Cari")
+st.title("Comparing Price in Tokopedia")
 
-if submitted:
-    # Jika gambar belum diupload, beri peringatan
-    if uploaded_file is None and keyword_input.strip() == '':
-        st.warning("Silakan upload gambar atau masukkan keyword pencarian!")
+manual_query = st.text_input("Input Product (Press ENTER to Submit)")
+
+uploaded_file = st.file_uploader('Upload image...', type=['jpg', 'jpeg', 'png'])
+
+def search_and_display(product_name):
+    st.write(f"Searching {product_name} in Tokopedia...")
+    products = scrape_tokopedia_with_sales(product_name)
+
+    if products:
+        st.markdown("### All Products:")
+        
+        for idx, p in enumerate(products, start=1):
+             with st.expander(f"{idx}. {p['name']}"):
+                cols = st.columns([2, 2, 1])
+                with cols[0]:
+                    st.markdown(f"Price: {p['price']}")
+                    st.markdown(f"Sold: {p['sold']}")
+                with cols[1]:
+                    st.markdown(f"[Product Detail]({p['link']})")
+
+        harga_terendah = min(
+            [p for p in products if p['price_num'] is not None],
+            key=lambda x: x['price_num']
+        )
+
+        terjual_terbanyak = max(
+            products,
+            key=lambda x: x['sold_num']
+        )
+
+        st.markdown("---")
+        st.markdown("### The Best Choice")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            st.success(f"Cheapest Price \n\n[{harga_terendah['name']}]({harga_terendah['link']})\n\n**{harga_terendah['price']}** - {harga_terendah['sold']}")
+        with col2:
+            st.info(f"Sold the Most \n\n[{terjual_terbanyak['name']}]({terjual_terbanyak['link']})\n\n**{terjual_terbanyak['price']}** - {terjual_terbanyak['sold']}")
+        
+        produk_terpilih = pd.DataFrame([
+            {
+                'Type': 'Harga Termurah',
+                'Name': harga_terendah['name'],
+                'Price': harga_terendah['price'],
+                'Sold': harga_terendah['sold'],
+                'Link': harga_terendah['link']
+            },
+            {
+                'Type': 'Terjual Terbanyak',
+                'Name': terjual_terbanyak['name'],
+                'Price': terjual_terbanyak['price'],
+                'Sold': terjual_terbanyak['sold'],
+                'Link': terjual_terbanyak['link']
+            }
+        ])
+
+        st.markdown("Saved Product")
+        st.dataframe(produk_terpilih)
+
+        csv_file = "saved.csv"
+        produk_terpilih.to_csv(csv_file, index=False)
+
+        with open(csv_file, "rb") as f:
+            st.download_button(
+                label="Download Saved Product",
+                data=f,
+                file_name=csv_file,
+                mime="text/csv"
+            )
+            
     else:
-        # Proses prediksi hanya jika gambar ada
-        if uploaded_file is not None:
-            image = Image.open(uploaded_file)
-            st.image(image, caption='Uploaded Image', use_column_width=True)
+        st.warning("Tidak ada hasil ditemukan di Tokopedia.")
 
-            img = image.resize((img_width, img_height))
-            img_array = tf.keras.utils.img_to_array(img)
-            img_array = np.expand_dims(img_array, axis=0)
+if manual_query:
+    search_and_display(manual_query)
 
-            st.write('Sedang melakukan klasifikasi...')
-            predictions = model.predict(img_array)
+elif uploaded_file is not None:
+    image = Image.open(uploaded_file)
+    st.image(image, caption='Uploaded Image', use_column_width=True)
 
-            if model.output_shape[-1] == len(data_cat):
-                score = predictions[0]
-            else:
-                score = tf.nn.softmax(predictions[0])
+    img = image.resize((img_width, img_height))
+    img_array = tf.keras.utils.img_to_array(img)
+    img_array = np.expand_dims(img_array, axis=0)
 
-            predicted_class = data_cat[np.argmax(score)]
-            confidence = np.max(score) * 100
+    predictions = model.predict(img_array)
 
-            st.write(f'Prediksi: **{predicted_class}**')
-            st.write(f'Keyakinan: **{confidence:.2f}%**')
-        else:
-            predicted_class = None
+    if model.output_shape[-1] == len(data_cat):
+        score = predictions[0]
+    else:
+        score = tf.nn.softmax(predictions[0])
 
-        # Tentukan keyword pencarian
-        keyword_to_search = keyword_input.strip() if keyword_input.strip() != '' else (predicted_class if predicted_class else '')
+    predicted_class = data_cat[np.argmax(score)]
 
-        if keyword_to_search == '':
-            st.warning("Tidak ada keyword untuk pencarian Tokopedia")
-        else:
-            st.write(f'Mencari harga dan jumlah terjual untuk: **{keyword_to_search}** di Tokopedia...')
-            products = scrape_tokopedia_with_sales(keyword_to_search)
+    st.write(f'Prediction: {predicted_class}')
 
-            if products:
-                for p in products:
-                    st.markdown(f"- **{p['name']}**\n  - Harga: {p['price']}\n  - Terjual: {p['sold']}\n  - [Lihat Produk]({p['link']})")
+    products = scrape_tokopedia_with_sales(predicted_class)
 
-                harga_terendah = min(
-                    [p for p in products if p['price_num'] is not None],
-                    key=lambda x: x['price_num']
-                )
-                terjual_terbanyak = max(
-                    products,
-                    key=lambda x: x['sold_num']
-                )
+    if products:
+        st.markdown("### All Products:")
+        
+        for idx, p in enumerate(products, start=1):
+            with st.expander(f"{idx}. {p['name']}"):
+                cols = st.columns([2, 2, 1])
+                with cols[0]:
+                    st.markdown(f"Price: {p['price']}")
+                    st.markdown(f"Sold: {p['sold']}")
+                with cols[1]:
+                    st.markdown(f"[Product Detail]({p['link']})")
 
-                st.markdown("---")
-                st.markdown(f"### Harga Termurah:\n- **{harga_terendah['name']}** - {harga_terendah['price']} - [Link]({harga_terendah['link']})")
+    
+        harga_terendah = min(
+            [p for p in products if p['price_num'] is not None],
+            key=lambda x: x['price_num']
+        )
 
-                st.markdown(f"### Terjual Terbanyak:\n- **{terjual_terbanyak['name']}** - Terjual: {terjual_terbanyak['sold']} - [Link]({terjual_terbanyak['link']})")
-            else:
-                st.write('Tidak ada hasil ditemukan di Tokopedia')
+        terjual_terbanyak = max(
+            products,
+            key=lambda x: x['sold_num']
+        )
+
+        st.markdown("---")
+        st.markdown("### The Best Choice")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            st.success(f"Cheapest Price \n\n[{harga_terendah['name']}]({harga_terendah['link']})\n\n**{harga_terendah['price']}** - {harga_terendah['sold']}")
+        with col2:
+            st.info(f"Sold the Most \n\n[{terjual_terbanyak['name']}]({terjual_terbanyak['link']})\n\n**{terjual_terbanyak['price']}** - {terjual_terbanyak['sold']}")
+        
+        produk_terpilih = pd.DataFrame([
+            {
+                'Type': 'Harga Termurah',
+                'Name': harga_terendah['name'],
+                'Price': harga_terendah['price'],
+                'Sold': harga_terendah['sold'],
+                'Link': harga_terendah['link']
+            },
+            {
+                'Type': 'Terjual Terbanyak',
+                'Name': terjual_terbanyak['name'],
+                'Price': terjual_terbanyak['price'],
+                'Sold': terjual_terbanyak['sold'],
+                'Link': terjual_terbanyak['link']
+            }
+        ])
+        
+        st.markdown("Saved Product")
+        st.dataframe(produk_terpilih)
+
+        csv_file = "saved.csv"
+        produk_terpilih.to_csv(csv_file, index=False)
+
+        with open(csv_file, "rb") as f:
+            st.download_button(
+                label="Download Saved Product",
+                data=f,
+                file_name=csv_file,
+                mime="text/csv"
+            )
+
+    else:
+        st.write('Tidak ada hasil ditemukan di Tokopedia')
